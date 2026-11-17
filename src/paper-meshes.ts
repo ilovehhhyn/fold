@@ -18,7 +18,7 @@ import {
 
 import { paperFrontColour } from "./paper-textures";
 import type { TriangleTexture } from "./paper-textures";
-import { innerTriangles, liftedCentreCorner, pocketTriangles, quadrants, trianglePoints } from "./rig";
+import { expandedPocketCorner, innerTriangles, liftedCentreCorner, pocketTriangles, quadrants, trianglePoints } from "./rig";
 import type { Point, Pose } from "./rig";
 
 const paperBackColour = "#e4dac6";
@@ -44,13 +44,21 @@ const paperMaterialOptions = {
 /** Something the player can point at: a number triangle or a whole pocket. */
 export type PickTarget = Readonly<{ kind: "panel"; index: number } | { kind: "pocket"; index: number }>;
 
+/** The parts of the paper's shape that the pose alone does not give. */
+export type PaperShape = Readonly<{
+	/** One lift angle per number triangle, in radians; 0 leaves the triangle in place. */
+	liftAnglesRadians: readonly number[];
+	/** One hover expansion per pocket, from 0 (at rest) to 1 (fully expanded). */
+	pocketExpansions: readonly number[];
+}>;
+
 type Surface = Readonly<{ geometry: BufferGeometry; material: MeshStandardMaterial; mesh: Mesh }>;
 
 export type PaperMeshes = Readonly<{
 	group: Group;
 	pickables: readonly Mesh[];
-	/** Moves every triangle to the pose; `liftAnglesRadians` has one angle per number triangle. */
-	movePaper: (pose: Pose, liftAnglesRadians: readonly number[]) => void;
+	/** Moves every triangle to the pose, with its lifted number triangles and expanded pockets. */
+	movePaper: (pose: Pose, shape: PaperShape) => void;
 	setPanelLabel: (panelIndex: number, triangleTexture: TriangleTexture) => void;
 	setFortune: (panelIndex: number, triangleTexture: TriangleTexture) => void;
 	setPocketLabel: (pocketTriangleIndex: number, triangleTexture: TriangleTexture) => void;
@@ -78,9 +86,8 @@ export function createPaperMeshes(): PaperMeshes {
 	};
 	const fortunes = innerTriangles.map(() => addSurface(null, false));
 	const numbers = innerTriangles.map((_triangle, index) => addSurface({ kind: "panel", index }, true));
-	const pockets = pocketTriangles.map((triangle) =>
-		addSurface({ kind: "pocket", index: quadrants.findIndex((quadrant) => quadrant.name === triangle.pocket) }, true),
-	);
+	const pocketIndexes = pocketTriangles.map((triangle) => quadrants.findIndex((quadrant) => quadrant.name === triangle.pocket));
+	const pockets = pocketIndexes.map((index) => addSurface({ kind: "pocket", index }, true));
 	const edgeGeometry = new BufferGeometry();
 	edgeGeometry.setAttribute("position", new BufferAttribute(new Float32Array(trianglesWithEdges * floatsPerTriangleEdges), 3));
 	const edgeMaterial = new LineBasicMaterial({ color: edgeColour, opacity: 0.6, transparent: true });
@@ -88,11 +95,11 @@ export function createPaperMeshes(): PaperMeshes {
 	edges.frustumCulled = false;
 	group.add(edges);
 
-	const movePaper = (pose: Pose, liftAnglesRadians: readonly number[]): void => {
+	const movePaper = (pose: Pose, shape: PaperShape): void => {
 		const outlines: (readonly [Point, Point, Point])[] = [];
 		for (const [index, triangle] of innerTriangles.entries()) {
 			const corners = trianglePoints(pose, triangle.corners);
-			const angle = requireItem(liftAnglesRadians, index, "lift angle");
+			const angle = requireItem(shape.liftAnglesRadians, index, "lift angle");
 			const isLifted = angle > liftVisibleMinRadians;
 			const lifted: readonly [Point, Point, Point] = isLifted
 				? [liftedCentreCorner(pose, triangle, angle), corners[1], corners[2]]
@@ -104,7 +111,12 @@ export function createPaperMeshes(): PaperMeshes {
 			outlines.push(lifted, isLifted ? corners : [corners[0], corners[0], corners[0]]);
 		}
 		for (const [index, triangle] of pocketTriangles.entries()) {
-			const corners = trianglePoints(pose, triangle.corners);
+			if (!triangle.corners[0].startsWith("pocketCorners.")) {
+				throw new Error(`pocket triangle ${triangle.corners.join(" ")} must list its pocket corner first`);
+			}
+			const [pocketCorner, second, third] = trianglePoints(pose, triangle.corners);
+			const expansion = requireItem(shape.pocketExpansions, requireItem(pocketIndexes, index, "pocket"), "pocket expansion");
+			const corners: readonly [Point, Point, Point] = [expandedPocketCorner(pocketCorner, expansion), second, third];
 			writeTriangle(requireItem(pockets, index, "pocket surface").geometry, corners);
 			outlines.push(corners);
 		}

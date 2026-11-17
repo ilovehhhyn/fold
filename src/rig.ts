@@ -16,6 +16,8 @@
 const tipOffsetMin = 0;
 const tipOffsetMax = 1;
 const diagonalSquared = 2;
+// A fully expanded pocket corner stands this share of its distance farther from the centre.
+export const pocketExpansionMax = 0.16;
 
 export type Point = readonly [x: number, y: number, z: number];
 
@@ -170,6 +172,22 @@ export function liftedCentreCorner(pose: Pose, triangle: InnerTriangle, angleRad
 		mid[1] + cosine * offset[1] + sine * sideways[1],
 		mid[2] + cosine * offset[2] + sine * sideways[2],
 	];
+}
+
+/**
+ * Returns a pocket corner pushed away from the centre, as a cue that the pointer is over the pocket.
+ *
+ *   expanded = pocketCorner * (1 + pocketExpansionMax * expansion),  expansion in [0, 1]
+ * This stretches the two triangles of the pocket on purpose. It is a hover cue, not a paper fold,
+ * so the edge-length guarantee of `computePose` does not cover it.
+ */
+export function expandedPocketCorner(pocketCorner: Point, expansion: number): Point {
+	const isInRange = expansion >= 0 && expansion <= 1;
+	if (!isInRange) {
+		throw new RangeError(`expansion must be a number from 0 to 1, got ${expansion}`);
+	}
+	const scale = 1 + pocketExpansionMax * expansion;
+	return [pocketCorner[0] * scale, pocketCorner[1] * scale, pocketCorner[2] * scale];
 }
 
 function requireTipOffset(name: "tipX" | "tipZ", value: number): number {

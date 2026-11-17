@@ -5,6 +5,10 @@ import assert from "node:assert/strict";
 import { test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+import { cameraFieldOfViewDegrees, playFraming } from "../../src/camera-framing";
+import { computePose, expandedPocketCorner, namedPoses } from "../../src/rig";
+import type { Point } from "../../src/rig";
+
 const storageKey = "fortune-teller.config.v1";
 
 test("the keyboard alone plays red, 3 and 5 and the status line shows fortune 5", async ({ page }) => {
@@ -95,6 +99,40 @@ test("a click on a pocket and then on two number triangles plays the game on the
 	await waitForPhase(page, "revealed");
 
 	assert.equal(await statusText(page), "Your fortune: A good surprise is on its way.");
+});
+
+test("a corner pocket under the pointer expands outward and settles back when the pointer leaves", async ({ page }) => {
+	// Invariant: hovering a pocket moves its outer corner away from the centre; leaving undoes it.
+	// Witness: a point just beyond the resting corner of the red pocket is empty, then red, then empty.
+	await page.setViewportSize({ width: 1280, height: 900 });
+	await page.goto("");
+	await waitForPhase(page, "chooseColour");
+	const pose = computePose(namedPoses.closed);
+	const restCorner = pose.pocketCorners.northEast;
+	const grownCorner = expandedPocketCorner(restCorner, 1);
+	const beyondRestCorner = projectToStage([
+		(restCorner[0] + grownCorner[0]) / 2,
+		(restCorner[1] + grownCorner[1]) / 2,
+		(restCorner[2] + grownCorner[2]) / 2,
+	]);
+	const insidePocket = projectToStage([
+		(restCorner[0] + pose.mids.north[0] + pose.tips.northEast[0]) / 3,
+		(restCorner[1] + pose.mids.north[1] + pose.tips.northEast[1]) / 3,
+		(restCorner[2] + pose.mids.north[2] + pose.tips.northEast[2]) / 3,
+	]);
+
+	assert.equal((await stagePixel(page, beyondRestCorner)).alpha, 0, "at rest the sample point must lie outside the paper");
+
+	await page.mouse.move(...(await stagePoint(page, insidePocket[0], insidePocket[1])));
+	await page.waitForTimeout(500);
+	const grown = await stagePixel(page, beyondRestCorner);
+	await page.locator(".fortune-teller__stage").screenshot({ path: "screenshots/hover-expanded-pocket.png" });
+	assert.equal(grown.alpha, 255, "the expanded pocket must cover the sample point");
+	assert.ok(grown.red > grown.blue + 60 && grown.red > grown.green + 60, `the sample point must be red, got ${JSON.stringify(grown)}`);
+
+	await page.mouse.move(...(await stagePoint(page, 0.02, 0.02)));
+	await page.waitForTimeout(500);
+	assert.equal((await stagePixel(page, beyondRestCorner)).alpha, 0, "the pocket must settle back when the pointer leaves");
 });
 
 test("with reduced motion the count is one short step", async ({ page }) => {
@@ -218,4 +256,55 @@ async function stagePoint(page: Page, shareX: number, shareY: number): Promise<[
 
 async function clickStage(page: Page, shareX: number, shareY: number): Promise<void> {
 	await page.mouse.click(...(await stagePoint(page, shareX, shareY)));
+}
+
+// Returns where a point of the paper appears on the stage, as shares of its width and height.
+// This is a pinhole projection for the play camera, written out here so the test does not
+// rely on the drawing code.
+function projectToStage(point: Point): readonly [number, number] {
+	const { position, target } = playFraming();
+	const forward = normalise([target[0] - position[0], target[1] - position[1], target[2] - position[2]]);
+	const right = normalise(cross(forward, [0, 1, 0]));
+	const up = cross(right, forward);
+	const relative: Point = [point[0] - position[0], point[1] - position[1], point[2] - position[2]];
+	const reach = dot(relative, forward) * Math.tan((cameraFieldOfViewDegrees * Math.PI) / 360);
+	return [(dot(relative, right) / reach + 1) / 2, (1 - dot(relative, up) / reach) / 2];
+}
+
+// Reads one pixel of the WebGL canvas. The read happens inside an animation frame, after the
+// toy has drawn that frame, because the canvas is cleared once the frame is shown.
+async function stagePixel(page: Page, share: readonly [number, number]): Promise<{ red: number; green: number; blue: number; alpha: number }> {
+	return page.evaluate(
+		([shareX, shareY]) =>
+			new Promise((resolve, reject) => {
+				requestAnimationFrame(() => {
+					const canvas = document.querySelector<HTMLCanvasElement>(".fortune-teller__stage canvas");
+					const copy = document.createElement("canvas");
+					const context = copy.getContext("2d");
+					if (canvas === null || context === null) {
+						reject(new Error("the stage canvas and a 2D context are required to read a pixel"));
+						return;
+					}
+					copy.width = canvas.width;
+					copy.height = canvas.height;
+					context.drawImage(canvas, 0, 0);
+					const [red, green, blue, alpha] = context.getImageData(Math.round(shareX * canvas.width), Math.round(shareY * canvas.height), 1, 1).data;
+					resolve({ red: red ?? -1, green: green ?? -1, blue: blue ?? -1, alpha: alpha ?? -1 });
+				});
+			}),
+		[share[0], share[1]] as const,
+	);
+}
+
+function dot(left: Point, right: Point): number {
+	return left[0] * right[0] + left[1] * right[1] + left[2] * right[2];
+}
+
+function cross(left: Point, right: Point): Point {
+	return [left[1] * right[2] - left[2] * right[1], left[2] * right[0] - left[0] * right[2], left[0] * right[1] - left[1] * right[0]];
+}
+
+function normalise(vector: Point): Point {
+	const length = Math.hypot(vector[0], vector[1], vector[2]);
+	return [vector[0] / length, vector[1] / length, vector[2] / length];
 }

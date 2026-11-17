@@ -11,9 +11,11 @@ import { test } from "vitest";
 import {
 	computePose,
 	cornerPosition,
+	expandedPocketCorner,
 	innerTriangles,
 	liftedCentreCorner,
 	namedPoses,
+	pocketExpansionMax,
 	pocketTriangles,
 	trianglePoints,
 } from "./rig";
@@ -133,6 +135,33 @@ test("a lifted number triangle keeps its size, starts at the centre and rises fi
 		assert.ok(Math.abs((lengths[1] ?? Number.NaN) - Math.SQRT2) <= lengthTolerance, `long edge is ${lengths[1]}`);
 		const horizontalReach = Math.hypot(fullyLifted[0], fullyLifted[2]);
 		assert.ok(horizontalReach > 1, `the lifted corner must end outside the paper, reach ${horizontalReach}`);
+	}
+});
+
+test("an expanded pocket corner moves straight away from the centre, by the stated share at most", () => {
+	const corner = computePose(namedPoses.closed).pocketCorners.northEast;
+
+	const atRest = expandedPocketCorner(corner, 0);
+	const halfway = expandedPocketCorner(corner, 0.5);
+	const full = expandedPocketCorner(corner, 1);
+
+	assert.deepEqual(atRest, corner);
+	const restLength = Math.hypot(...corner);
+	assert.ok(Math.abs(Math.hypot(...halfway) / restLength - (1 + pocketExpansionMax / 2)) <= lengthTolerance);
+	assert.ok(Math.abs(Math.hypot(...full) / restLength - (1 + pocketExpansionMax)) <= lengthTolerance);
+	for (const index of [0, 1, 2] as const) {
+		assert.ok(Math.abs(full[index] / corner[index] - (1 + pocketExpansionMax)) <= lengthTolerance, "the direction must not change");
+	}
+});
+
+test("an expansion outside 0 to 1 is rejected", () => {
+	const corner = computePose(namedPoses.closed).pocketCorners.southWest;
+
+	for (const badValue of [-0.01, 1.01, Number.NaN, Number.POSITIVE_INFINITY]) {
+		assert.throws(() => expandedPocketCorner(corner, badValue), {
+			name: "RangeError",
+			message: /^expansion must be a number from 0 to 1, got /,
+		});
 	}
 });
 

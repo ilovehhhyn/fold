@@ -29,6 +29,7 @@ import { createToyView } from "./toy-view";
 import type { ViewGoal } from "./toy-view";
 
 const editMoveDurationMs = 350;
+const pocketExpandDurationMs = 160;
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 
 /** `fixedPose` shows one pose without the game; the demo page uses it for screenshots. */
@@ -121,9 +122,11 @@ async function start(
 		return;
 	}
 
+	// A highlighted pocket also expands, so the corner under the pointer visibly reacts.
 	const setHighlight = (target: PickTarget | null): void => {
 		scene.meshes.setHighlight(target);
-		loop.requestRender();
+		const pocketIndex = target !== null && target.kind === "pocket" ? target.index : null;
+		void view.expandPocket(pocketIndex, motionPreference.matches ? 0 : pocketExpandDurationMs);
 	};
 	const gameFlow = createGameFlow({
 		cancelMotion: animator.cancelAll,
@@ -182,8 +185,9 @@ async function start(
 		controls.editButton.textContent = isEditing ? "Done" : "Edit";
 		controls.editButton.setAttribute("aria-expanded", String(isEditing));
 		editor.setOpen(isEditing);
-		setHighlight(null);
+		// Pausing cancels every running move, so the highlight is cleared after it, not before.
 		gameFlow.setPaused(isEditing);
+		setHighlight(null);
 	};
 	controls.editButton.addEventListener("click", onEditClick);
 	controls.editButton.hidden = false;

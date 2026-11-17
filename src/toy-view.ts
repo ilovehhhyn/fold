@@ -2,12 +2,15 @@
 //
 // Every move starts from the current values, so a move that interrupts another one continues
 // from where the paper is. In-between poses are valid because any pair of tip offsets in range is.
+// The hover expansion of the pockets is kept apart from the pose, so a pose move and a hover
+// change can run at the same time without overwriting each other.
 
 import type { Animator, TweenOutcome } from "./animation";
 import { fortuneFraming, liftAngleDegrees, playFraming } from "./camera-framing";
 import type { CameraFraming } from "./camera-framing";
-import { computePose, innerTriangles } from "./rig";
+import { computePose, innerTriangles, quadrants } from "./rig";
 import type { Point, TipOffsets } from "./rig";
+import type { PaperMeshes } from "./paper-meshes";
 import type { ToyScene } from "./scene";
 
 const liftAngleRadians = (liftAngleDegrees * Math.PI) / 180;
@@ -24,25 +27,34 @@ export type ViewGoal = Readonly<{
 export type ToyView = Readonly<{
 	moveTo: (goal: ViewGoal, durationMs: number) => Promise<TweenOutcome>;
 	snapTo: (goal: ViewGoal) => void;
+	/** Expands one pocket outward as a hover cue and lets the others settle back; null expands none. */
+	expandPocket: (pocketIndex: number | null, durationMs: number) => Promise<TweenOutcome>;
 }>;
+
+/** The two parts of the scene that the view drives. */
+export type ViewScene = Readonly<{ meshes: Pick<PaperMeshes, "movePaper">; setCamera: ToyScene["setCamera"] }>;
 
 type ViewValues = Readonly<{ offsets: TipOffsets; liftAngles: readonly number[]; camera: CameraFraming }>;
 
 /** Creates the view and shows the first goal at once. */
 export function createToyView(
-	scene: ToyScene,
+	scene: ViewScene,
 	animator: Animator,
 	requestRender: () => void,
 	firstGoal: ViewGoal,
 ): ToyView {
 	let current = valuesFor(firstGoal);
-	const show = (values: ViewValues): void => {
-		current = values;
-		scene.meshes.movePaper(computePose(values.offsets), values.liftAngles);
-		scene.setCamera(values.camera);
+	let pocketExpansions: readonly number[] = quadrants.map(() => 0);
+	const draw = (): void => {
+		scene.meshes.movePaper(computePose(current.offsets), { liftAnglesRadians: current.liftAngles, pocketExpansions });
+		scene.setCamera(current.camera);
 		requestRender();
 	};
-	show(current);
+	const show = (values: ViewValues): void => {
+		current = values;
+		draw();
+	};
+	draw();
 	return {
 		moveTo: (goal, durationMs) => {
 			const start = current;
@@ -58,6 +70,18 @@ export function createToyView(
 		},
 		snapTo: (goal) => {
 			show(valuesFor(goal));
+		},
+		expandPocket: (pocketIndex, durationMs) => {
+			const start = pocketExpansions;
+			const outcome = animator.tween({
+				durationMs,
+				update: (progress) => {
+					pocketExpansions = start.map((value, index) => mix(value, index === pocketIndex ? 1 : 0, progress));
+					draw();
+				},
+			});
+			requestRender();
+			return outcome;
 		},
 	};
 }
