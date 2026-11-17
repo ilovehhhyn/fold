@@ -34,6 +34,9 @@ export type SpecialEnding = Readonly<{
 	onChosen?: () => void;
 }>;
 
+/** Which texts the status line shows. */
+export type StatusLine = "full" | "specialPromptOnly";
+
 export type GameFlowOptions = Readonly<{
 	view: ToyView;
 	controls: Controls;
@@ -41,6 +44,8 @@ export type GameFlowOptions = Readonly<{
 	prefersReducedMotion: () => boolean;
 	cancelMotion: () => void;
 	special: SpecialEnding | null;
+	/** "full" shows every prompt and the count; "specialPromptOnly" shows only the special question and the fortune. */
+	statusLine: StatusLine;
 	/** Draws the labels and fortunes of a layout on the paper. */
 	showLayout: (layout: PanelLayout) => void;
 }>;
@@ -64,7 +69,8 @@ type ChoiceState = Exclude<GameState, { phase: "counting" | "handedOver" | "reve
 
 /** Creates the flow and shows the first phase. */
 export function createGameFlow(options: GameFlowOptions): GameFlow {
-	const { cancelMotion, config, controls, prefersReducedMotion, showLayout, special, view } = options;
+	const { cancelMotion, config, controls, prefersReducedMotion, showLayout, special, statusLine, view } = options;
+	const isQuiet = statusLine === "specialPromptOnly";
 	let state: GameState = initialGameState;
 	let isPaused = false;
 	let isReturning = false;
@@ -121,7 +127,7 @@ export function createGameFlow(options: GameFlowOptions): GameFlow {
 		let isOpen = counting.numbersChosen === 1;
 		for (const [index, axis] of counting.openings.entries()) {
 			spoken.push(counting.tokens[index] ?? "");
-			controls.setStatus(spoken.join(" "));
+			controls.setStatus(isQuiet ? "" : spoken.join(" "));
 			// With reduced motion the status line carries the count and only the last opening moves.
 			if (prefersReducedMotion() && index < lastIndex) {
 				continue;
@@ -217,10 +223,10 @@ export function createGameFlow(options: GameFlowOptions): GameFlow {
 	const statusFor = (shown: GameState): string | undefined => {
 		switch (shown.phase) {
 			case "chooseColour":
-				return "Choose a colour.";
+				return isQuiet ? "" : "Choose a colour.";
 			case "chooseNumber":
 				if (shown.numbersChosen === 0) {
-					return "Choose a number.";
+					return isQuiet ? "" : "Choose a number.";
 				}
 				return special === null ? "Choose one more number to see your fortune." : special.prompt;
 			case "counting":

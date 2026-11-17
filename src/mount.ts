@@ -25,7 +25,7 @@ import type { EditorField } from "./editor";
 import { standardLayout } from "./game";
 import type { PanelLayout } from "./game";
 import { createGameFlow } from "./game-flow";
-import type { GameFlow, SpecialEnding } from "./game-flow";
+import type { GameFlow, SpecialEnding, StatusLine } from "./game-flow";
 import { applyConfigToPaper, drawPanelsOnTriangles } from "./paper-labels";
 import type { PickTarget } from "./paper-meshes";
 import { paperFontFamily } from "./paper-textures";
@@ -47,6 +47,8 @@ export type MountOptions = Readonly<{
 	fixedPose?: TipOffsets;
 	/** Makes one panel always available at the second number choice, with its own question. */
 	specialEnding?: SpecialEnding;
+	/** Which texts the status line shows; "full" when not given. */
+	statusLine?: StatusLine;
 }>;
 
 export type MountedFortuneTeller = Readonly<{
@@ -157,6 +159,7 @@ async function start(
 		prefersReducedMotion: () => motionPreference.matches,
 		showLayout,
 		special: options.specialEnding ?? null,
+		statusLine: options.statusLine ?? "full",
 		view,
 	});
 	flow = gameFlow;

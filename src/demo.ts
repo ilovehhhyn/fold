@@ -48,7 +48,7 @@ async function startDemo(): Promise<void> {
 		prompt: specialPrompt,
 		...(onChosen === undefined ? {} : { onChosen }),
 	};
-	mounted = mountFortuneTeller(container, { specialEnding });
+	mounted = mountFortuneTeller(container, { specialEnding, statusLine: "specialPromptOnly" });
 	if (letter.status === "invalid") {
 		showProblem(container, "status", `This link cannot open its letter: ${letter.reason}. Ask for the link again.`);
 	}
