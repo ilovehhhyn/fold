@@ -6,6 +6,8 @@ to show a fortune. The visitor can write their own labels and fortunes.
 
 The build is static files. It needs no server and makes no request to another host at run time.
 
+Play it at <https://ilovehhhyn.github.io/fold/>.
+
 ## Run it
 
 Prerequisites: Node.js 24 and npm 11. Google Chrome is needed for the browser tests.
@@ -29,6 +31,12 @@ Expected result: Vite prints a local address. Open it to play.
 | `npm run build` | Type-checks the code and writes the static site to `dist/`. |
 
 The browser tests write screenshots to `screenshots/`.
+
+## Hosting
+
+Every push to `main` runs `.github/workflows/deploy-site.yml`. The workflow runs the unit tests,
+builds the site and publishes `dist/` to GitHub Pages. It does not run the browser tests. Run
+those on your machine before you push.
 
 ## Embed it in another page
 
