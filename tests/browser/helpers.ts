@@ -8,7 +8,7 @@ export const storageKey = "fortune-teller.config.v2";
 // The accessible names of the four pocket buttons, which show a colour and no word.
 export const defaultPocketNames = ["purple", "slate", "green", "peach"];
 export const firstNumberPrompt = "Choose a number.";
-export const secondNumberPrompt = "what special day is it?";
+export const secondNumberPrompt = "what special day is it? honhonhon";
 
 export async function waitForPhase(page: Page, phase: string): Promise<void> {
 	await page.locator(`.fortune-teller[data-phase="${phase}"]`).waitFor();

@@ -15,6 +15,12 @@
 	transition: opacity 500ms ease;
 }
 
+/* On the demo page the player picks only by clicking the paper: no choice buttons and no Edit button. */
+.demo .fortune-teller__choices,
+.demo .fortune-teller__toolbar {
+	display: none;
+}
+
 .demo__main--leaving {
 	opacity: 0;
 }

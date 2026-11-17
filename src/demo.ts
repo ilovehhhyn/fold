@@ -12,7 +12,7 @@ import { showLetterPage } from "./letter-page";
 const containerId = "fortune-teller";
 // Panel 3 answers the question below. The game offers it at every second number choice.
 const specialPanelIndex = 2;
-const specialPrompt = "what special day is it?";
+const specialPrompt = "what special day is it? honhonhon";
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 
 async function startDemo(): Promise<void> {
