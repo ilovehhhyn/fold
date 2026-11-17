@@ -9,14 +9,24 @@ import { createAnimator } from "./animation";
 import paperFontUrl from "./assets/fonts/patrick-hand-latin-400-normal.woff2";
 import type { FortuneTellerConfig } from "./config";
 import { defaultConfig } from "./config";
-import { chooseStartConfig, fragmentFor, readFragmentConfig, readSavedConfig, storageKey, writeSavedConfig } from "./config-storage";
+import {
+	chooseStartConfig,
+	fragmentFor,
+	isConfigFragment,
+	readFragmentConfig,
+	readSavedConfig,
+	storageKey,
+	writeSavedConfig,
+} from "./config-storage";
 import { createControls } from "./controls";
 import type { Controls } from "./controls";
 import { createEditor } from "./editor";
 import type { EditorField } from "./editor";
+import { standardLayout } from "./game";
+import type { PanelLayout } from "./game";
 import { createGameFlow } from "./game-flow";
-import type { GameFlow } from "./game-flow";
-import { applyConfigToPaper } from "./paper-labels";
+import type { GameFlow, SpecialEnding } from "./game-flow";
+import { applyConfigToPaper, drawPanelsOnTriangles } from "./paper-labels";
 import type { PickTarget } from "./paper-meshes";
 import { paperFontFamily } from "./paper-textures";
 import { attachPointerInput } from "./pointer-input";
@@ -32,8 +42,12 @@ const editMoveDurationMs = 350;
 const pocketExpandDurationMs = 160;
 const reducedMotionQuery = "(prefers-reduced-motion: reduce)";
 
-/** `fixedPose` shows one pose without the game; the demo page uses it for screenshots. */
-export type MountOptions = Readonly<{ fixedPose?: TipOffsets }>;
+export type MountOptions = Readonly<{
+	/** Shows one pose without the game; the demo page uses it for screenshots. */
+	fixedPose?: TipOffsets;
+	/** Makes one panel always available at the second number choice, with its own question. */
+	specialEnding?: SpecialEnding;
+}>;
 
 export type MountedFortuneTeller = Readonly<{
 	/** Removes the toy from the page and releases everything it created. */
@@ -90,7 +104,8 @@ async function start(
 	const startConfig = chooseStartConfig(readSavedConfig(storage), readFragmentConfig(window.location.hash));
 	notices.push(...startConfig.notices);
 	let config = startConfig.config;
-	applyConfigToPaper(scene.meshes, config);
+	let shownLayout: PanelLayout = standardLayout;
+	applyConfigToPaper(scene.meshes, config, shownLayout);
 
 	const animator = createAnimator();
 	const motionPreference = window.matchMedia(reducedMotionQuery);
@@ -128,11 +143,20 @@ async function start(
 		const pocketIndex = target !== null && target.kind === "pocket" ? target.index : null;
 		void view.expandPocket(pocketIndex, motionPreference.matches ? 0 : pocketExpandDurationMs);
 	};
+	// Only the triangles whose panel changed are redrawn, so a trade of two panels costs four textures.
+	const showLayout = (layout: PanelLayout): void => {
+		const changed = layout.flatMap((panelIndex, triangleIndex) => (panelIndex === shownLayout[triangleIndex] ? [] : [triangleIndex]));
+		shownLayout = layout;
+		drawPanelsOnTriangles(scene.meshes, config, layout, changed);
+		loop.requestRender();
+	};
 	const gameFlow = createGameFlow({
 		cancelMotion: animator.cancelAll,
 		config: () => config,
 		controls,
 		prefersReducedMotion: () => motionPreference.matches,
+		showLayout,
+		special: options.specialEnding ?? null,
 		view,
 	});
 	flow = gameFlow;
@@ -143,7 +167,7 @@ async function start(
 				if (target.kind === "pocket") {
 					gameFlow.choosePocket(target.index);
 				} else {
-					gameFlow.choosePanel(target.index);
+					gameFlow.chooseTriangle(target.index);
 				}
 			},
 			isChoosable: gameFlow.isChoosable,
@@ -154,7 +178,7 @@ async function start(
 
 	const applyConfig = (changed: FortuneTellerConfig): void => {
 		config = changed;
-		applyConfigToPaper(scene.meshes, config);
+		applyConfigToPaper(scene.meshes, config, shownLayout);
 		writeSavedConfig(storage, config);
 		clearFragment();
 		gameFlow.refresh();
@@ -257,9 +281,9 @@ async function copyLink(config: FortuneTellerConfig, controls: Controls): Promis
 }
 
 // A shared link wins over the saved configuration on load, so an edit must drop the link data
-// or the edit would seem lost after a reload.
+// or the edit would seem lost after a reload. Any other fragment belongs to the host page and stays.
 function clearFragment(): void {
-	if (window.location.hash !== "") {
+	if (isConfigFragment(window.location.hash)) {
 		window.history.replaceState(null, "", window.location.pathname + window.location.search);
 	}
 }

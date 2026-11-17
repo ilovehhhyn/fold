@@ -1,60 +1,62 @@
-// Writes a configuration onto the paper: pocket colours, pocket labels, number labels and fortunes.
+// Writes a configuration onto the paper: pocket colours, number labels and fortunes.
 //
-// Each text is laid out for the pose in which the player reads it: a pocket label in the closed
-// pose, a number label in the open pose that shows its flap, and a fortune in the reveal pose.
+// Each text is laid out for the pose in which the player reads it: a number label in the open
+// pose that shows its triangle, and a fortune in the reveal pose. Pockets carry a colour only;
+// their label is counted by the game but is not drawn.
 
 import { projectToScreen } from "./camera-framing";
 import type { FortuneTellerConfig } from "./config";
+import type { PanelLayout } from "./game";
 import type { PaperMeshes } from "./paper-meshes";
 import { createTriangleTexture, paperFrontColour } from "./paper-textures";
 import { computePose, innerTriangles, namedPoses, pocketTriangles, quadrants, trianglePoints } from "./rig";
 import type { CornerTriple, TipOffsets } from "./rig";
 
 const panelLabelFontSizeMaxPixels = 170;
-const pocketLabelFontSizeMaxPixels = 120;
 const fortuneFontSizeMaxPixels = 72;
 
-/** Redraws every text and colour on the paper from the configuration. */
-export function applyConfigToPaper(meshes: PaperMeshes, config: FortuneTellerConfig): void {
-	for (const [index, triangle] of innerTriangles.entries()) {
-		const panel = config.panels[index];
-		if (panel === undefined) {
-			throw new Error(`config must have a panel for number triangle ${index + 1}`);
-		}
-		const isShownByNorthSouthOpening = triangle.flap === "east" || triangle.flap === "west";
-		const labelPose = isShownByNorthSouthOpening ? namedPoses.openNorthSouth : namedPoses.openEastWest;
-		meshes.setPanelLabel(index, textureFor(panel.label, paperFrontColour, triangle.corners, labelPose, panelLabelFontSizeMaxPixels));
-		meshes.setFortune(index, textureFor(panel.fortune, paperFrontColour, triangle.corners, namedPoses.reveal, fortuneFontSizeMaxPixels));
-	}
+/** Redraws every colour and every text on the paper from the configuration. */
+export function applyConfigToPaper(meshes: PaperMeshes, config: FortuneTellerConfig, layout: PanelLayout): void {
 	for (const [index, triangle] of pocketTriangles.entries()) {
 		const pocket = config.pockets[quadrants.findIndex((quadrant) => quadrant.name === triangle.pocket)];
 		if (pocket === undefined) {
 			throw new Error(`config must have a pocket for ${triangle.pocket}`);
 		}
-		if (carriesPocketLabel(triangle.corners)) {
-			meshes.setPocketLabel(index, textureFor(pocket.label, pocket.colour, triangle.corners, namedPoses.closed, pocketLabelFontSizeMaxPixels));
-		} else {
-			meshes.setPocketColour(index, pocket.colour);
-		}
+		meshes.setPocketColour(index, pocket.colour);
 	}
+	drawPanelsOnTriangles(meshes, config, layout, innerTriangles.map((_triangle, index) => index));
 }
 
-// In the closed pose the pocket triangle beside a north or south mid has a wide horizontal
-// edge on screen, so a horizontal word fits it better than its neighbour.
-function carriesPocketLabel(corners: CornerTriple): boolean {
-	return corners.includes("mids.north") || corners.includes("mids.south");
+/** Redraws the label and the fortune of the listed number triangles for a layout. */
+export function drawPanelsOnTriangles(
+	meshes: PaperMeshes,
+	config: FortuneTellerConfig,
+	layout: PanelLayout,
+	triangleIndexes: readonly number[],
+): void {
+	for (const triangleIndex of triangleIndexes) {
+		const triangle = innerTriangles[triangleIndex];
+		const panelIndex = layout[triangleIndex];
+		const panel = panelIndex === undefined ? undefined : config.panels[panelIndex];
+		if (triangle === undefined || panel === undefined) {
+			throw new Error(`layout must name a panel for number triangle ${triangleIndex}, got ${String(panelIndex)}`);
+		}
+		const isShownByNorthSouthOpening = triangle.flap === "east" || triangle.flap === "west";
+		const labelPose = isShownByNorthSouthOpening ? namedPoses.openNorthSouth : namedPoses.openEastWest;
+		meshes.setPanelLabel(triangleIndex, textureFor(panel.label, triangle.corners, labelPose, panelLabelFontSizeMaxPixels));
+		meshes.setFortune(triangleIndex, textureFor(panel.fortune, triangle.corners, namedPoses.reveal, fortuneFontSizeMaxPixels));
+	}
 }
 
 function textureFor(
 	text: string,
-	backgroundColour: string,
 	corners: CornerTriple,
 	readingPose: TipOffsets,
 	fontSizeMaxPixels: number,
 ): ReturnType<typeof createTriangleTexture> {
 	const [first, second, third] = trianglePoints(computePose(readingPose), corners);
 	return createTriangleTexture({
-		backgroundColour,
+		backgroundColour: paperFrontColour,
 		fontSizeMaxPixels,
 		rightAngleIndex: rightAngleIndexOf(corners),
 		screenCorners: [projectToScreen(first), projectToScreen(second), projectToScreen(third)],

@@ -1,32 +1,80 @@
-/* Styles for the demo page only. The component's own styles are in style.css. */
+/* Styles for the demo page only: its pastel background and the letter page. The component's own styles are in style.css. */
 
 .demo {
 	margin: 0;
-	background: #f3efe6;
+	background: #f5f2b8;
 	color: #2b2620;
 	font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+/* The fade time must equal `leaveDurationMs` in letter-page.ts. */
 .demo__main {
 	max-width: 44rem;
 	margin: 0 auto;
 	padding: 1.5rem 1rem 3rem;
+	transition: opacity 500ms ease;
 }
 
-.demo__title {
-	margin: 0 0 0.25rem;
-	font-size: 1.6rem;
-	text-align: center;
-}
-
-.demo__lead {
-	margin: 0 0 1rem;
-	text-align: center;
+.demo__main--leaving {
+	opacity: 0;
 }
 
 .demo__problem {
+	max-width: 36rem;
+	margin: 1rem auto 0;
 	padding: 1rem;
 	border: 2px solid #b3261e;
 	border-radius: 0.5rem;
 	background: #fff;
+}
+
+/* The letter replaces the whole page with a blank white one. */
+.demo--letter {
+	background: #fff;
+}
+
+/*
+ * The letter is set like a new Google Docs document: a page 8.5 inches wide with margins of
+ * 1 inch, Arial 11 point, black, line spacing 1.15.
+ */
+.letter {
+	box-sizing: border-box;
+	max-width: 8.5in;
+	margin: 0 auto;
+	padding: 1in;
+	background: #fff;
+	color: #000;
+	font-family: Arial, Helvetica, sans-serif;
+	font-size: 11pt;
+	line-height: 1.15;
+	opacity: 0;
+	transition: opacity 700ms ease;
+}
+
+.letter:focus {
+	outline: none;
+}
+
+.letter--shown {
+	opacity: 1;
+}
+
+/* The text keeps every line break and blank line of the original. */
+.letter__text {
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+/* A phone is narrower than the page, so the side margins shrink and the text keeps its size. */
+@media (max-width: 40rem) {
+	.letter {
+		padding: 0.6in 0.35in;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.demo__main,
+	.letter {
+		transition: none;
+	}
 }

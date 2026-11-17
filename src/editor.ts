@@ -98,7 +98,7 @@ export function createEditor(options: EditorOptions): Editor {
 		row.append(input, problem);
 	};
 
-	const pocketSet = fieldset("Pockets: the coloured outside");
+	const pocketSet = fieldset("Pockets: the coloured outside. The word is counted when its pocket is chosen, but is not drawn.");
 	for (const [index, place] of pocketPlaces.entries()) {
 		const row = fieldRow(`${place} pocket`);
 		const focus: EditorField = { kind: "pocket", index };

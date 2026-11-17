@@ -3,9 +3,11 @@
 	"version": "1.0.0",
 	"description": "An interactive 3D paper fortune teller for the web.",
 	"private": true,
+	"homepage": "https://ilovehhhyn.github.io/fold/",
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
+		"encrypt-letter": "node scripts/encrypt-letter.ts",
 		"typecheck": "tsc --noEmit",
 		"build": "tsc --noEmit && vite build",
 		"test": "vitest run",

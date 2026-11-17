@@ -59,9 +59,8 @@ export type PaperMeshes = Readonly<{
 	pickables: readonly Mesh[];
 	/** Moves every triangle to the pose, with its lifted number triangles and expanded pockets. */
 	movePaper: (pose: Pose, shape: PaperShape) => void;
-	setPanelLabel: (panelIndex: number, triangleTexture: TriangleTexture) => void;
-	setFortune: (panelIndex: number, triangleTexture: TriangleTexture) => void;
-	setPocketLabel: (pocketTriangleIndex: number, triangleTexture: TriangleTexture) => void;
+	setPanelLabel: (triangleIndex: number, triangleTexture: TriangleTexture) => void;
+	setFortune: (triangleIndex: number, triangleTexture: TriangleTexture) => void;
 	setPocketColour: (pocketTriangleIndex: number, colour: string) => void;
 	setHighlight: (target: PickTarget | null) => void;
 	dispose: () => void;
@@ -158,9 +157,6 @@ export function createPaperMeshes(): PaperMeshes {
 		},
 		setFortune: (panelIndex, triangleTexture) => {
 			setTexture(requireItem(fortunes, panelIndex, "fortune surface"), triangleTexture);
-		},
-		setPocketLabel: (pocketTriangleIndex, triangleTexture) => {
-			setTexture(requireItem(pockets, pocketTriangleIndex, "pocket surface"), triangleTexture);
 		},
 		setPocketColour: (pocketTriangleIndex, colour) => {
 			const { material } = requireItem(pockets, pocketTriangleIndex, "pocket surface");

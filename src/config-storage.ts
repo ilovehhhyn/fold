@@ -7,7 +7,9 @@
 import { ConfigError, defaultConfig, parseConfig } from "./config";
 import type { FortuneTellerConfig } from "./config";
 
-export const storageKey = "fortune-teller.config.v1";
+// The key ends in v2 since the default colours changed and pocket labels are no longer drawn.
+// A value saved under the v1 key belongs to the earlier look and is not read.
+export const storageKey = "fortune-teller.config.v2";
 const fragmentPrefix = "#config=";
 
 /** The three outcomes of a read: nothing stored, a broken value, or a valid configuration. */
@@ -29,6 +31,11 @@ export function readSavedConfig(storage: Pick<Storage, "getItem">): LoadResult {
 /** Saves the configuration, replacing the one saved before. */
 export function writeSavedConfig(storage: Pick<Storage, "setItem">, config: FortuneTellerConfig): void {
 	storage.setItem(storageKey, JSON.stringify(config));
+}
+
+/** Returns true if the URL fragment carries a shared configuration, valid or not. */
+export function isConfigFragment(fragment: string): boolean {
+	return fragment.startsWith(fragmentPrefix);
 }
 
 /** Reads the configuration from a URL fragment such as `location.hash`. */

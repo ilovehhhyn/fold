@@ -15,7 +15,7 @@ const wholeNumberPattern = /^(?:[1-9]|1[0-2])$/;
 const letterOrDigitPattern = /[\p{L}\p{N}]/gu;
 const colourPattern = /^#[0-9a-f]{6}$/;
 
-/** One finger pocket: the word written on it and its colour as `#rrggbb`. */
+/** One finger pocket: its colour as `#rrggbb`, and the word that is counted for it but not drawn. */
 export type Pocket = Readonly<{ label: string; colour: string }>;
 
 /** One inside triangle: the label the player sees and the fortune hidden under it. */
@@ -44,10 +44,10 @@ export class ConfigError extends Error {
 export const defaultConfig: FortuneTellerConfig = {
 	version: configVersion,
 	pockets: [
-		{ label: "red", colour: "#e5484d" },
-		{ label: "blue", colour: "#3e63dd" },
-		{ label: "green", colour: "#30a46c" },
-		{ label: "yellow", colour: "#f5d90a" },
+		{ label: "purple", colour: "#a491d3" },
+		{ label: "slate", colour: "#818aa3" },
+		{ label: "green", colour: "#c5dca0" },
+		{ label: "peach", colour: "#f9dad0" },
 	],
 	panels: [
 		{ label: "1", fortune: "You will make a new friend soon." },

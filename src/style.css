@@ -82,9 +82,10 @@
 	background: #fffdf7;
 }
 
+/* A pocket button shows only its colour, so the dot is large enough to tell the colours apart. */
 .fortune-teller__swatch {
-	width: 0.9rem;
-	height: 0.9rem;
+	width: 1.6rem;
+	height: 1.6rem;
 	border: 1px solid #2b2620;
 	border-radius: 50%;
 }

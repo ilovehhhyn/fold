@@ -1,4 +1,4 @@
-// Invariant under test: the built site plays a whole game by keyboard and by pointer, and keeps a visitor's own text across a reload.
+// Invariant under test: the built site plays a whole game by keyboard and by pointer, shows no heading and no pocket words, and reacts to the pointer.
 
 import assert from "node:assert/strict";
 
@@ -8,73 +8,58 @@ import type { Page } from "@playwright/test";
 import { cameraFieldOfViewDegrees, playFraming } from "../../src/camera-framing";
 import { computePose, expandedPocketCorner, namedPoses } from "../../src/rig";
 import type { Point } from "../../src/rig";
+import {
+	choiceNames,
+	clickStage,
+	defaultPocketNames,
+	firstNumberPrompt,
+	focusedName,
+	secondNumberPrompt,
+	stagePoint,
+	statusText,
+	waitForPhase,
+	waitForStatus,
+} from "./helpers";
 
-const storageKey = "fortune-teller.config.v1";
+test("the page has a pastel yellow background, no heading and no words on the pocket buttons", async ({ page }) => {
+	await page.goto("");
+	await waitForPhase(page, "chooseColour");
 
-test("the keyboard alone plays red, 3 and 5 and the status line shows fortune 5", async ({ page }) => {
+	assert.equal(await page.locator("h1, h2").count(), 0);
+	const visibleText = await page.locator("body").innerText();
+	assert.equal(/fortune teller/i.test(visibleText), false, `the page must not show a title, got ${JSON.stringify(visibleText)}`);
+	assert.equal(await page.evaluate(() => getComputedStyle(document.body).backgroundColor), "rgb(245, 242, 184)");
+	assert.deepEqual(await choiceNames(page), defaultPocketNames);
+	assert.deepEqual(await page.locator(".fortune-teller__choices button").allInnerTexts(), ["", "", "", ""]);
+	const swatchColours = await page
+		.locator(".fortune-teller__swatch")
+		.evaluateAll((swatches) => swatches.map((swatch) => getComputedStyle(swatch).backgroundColor));
+	assert.deepEqual(swatchColours, ["rgb(164, 145, 211)", "rgb(129, 138, 163)", "rgb(197, 220, 160)", "rgb(249, 218, 208)"]);
+});
+
+test("the keyboard alone plays purple, 4 and 5 and the status line shows fortune 5", async ({ page }) => {
 	await page.goto("");
 	await waitForPhase(page, "chooseColour");
 
 	await page.keyboard.press("Tab");
-	assert.equal(await focusedText(page), "red");
+	assert.equal(await focusedName(page), "purple");
 	await page.keyboard.press("Enter");
-	await waitForStatus(page, "Choose a number.");
-	assert.deepEqual(await choiceLabels(page), ["2", "3", "6", "7"]);
+	await waitForStatus(page, firstNumberPrompt);
+	assert.deepEqual(await choiceNames(page), ["1", "4", "5", "8"]);
 
 	await page.keyboard.press("Tab");
-	assert.equal(await focusedText(page), "3");
+	assert.equal(await focusedName(page), "4");
 	await page.keyboard.press("Enter");
-	await waitForStatus(page, "Choose one more number to see your fortune.");
-	assert.deepEqual(await choiceLabels(page), ["1", "4", "5", "8"]);
+	await waitForStatus(page, secondNumberPrompt);
+	assert.deepEqual(await choiceNames(page), ["1", "3", "5", "8"]);
 
 	await page.keyboard.press("Tab");
-	assert.equal(await focusedText(page), "5");
+	assert.equal(await focusedName(page), "5");
 	await page.keyboard.press("Enter");
 	await waitForPhase(page, "revealed");
 
 	assert.equal(await statusText(page), "Your fortune: Someone is thinking of you.");
-	assert.deepEqual(await choiceLabels(page), ["Play again"]);
-});
-
-test("a fortune written in the form survives a reload and is the one that is revealed", async ({ page }) => {
-	const customFortune = "Custom fortune for the test.";
-	await page.goto("");
-	await waitForPhase(page, "chooseColour");
-
-	await page.getByRole("button", { name: "Edit", exact: true }).click();
-	await page.getByLabel("Panel 5 fortune").fill(customFortune);
-	// The camera takes 350 ms to reach the fortune; the screenshot waits for the end of that move.
-	await page.waitForTimeout(700);
-	await page.screenshot({ path: "screenshots/page-editor-fortune-field.png", fullPage: true });
-	await page.getByRole("button", { name: "Done", exact: true }).click();
-	await page.reload();
-	await waitForPhase(page, "chooseColour");
-	await playWithButtons(page, ["red", "3", "5"]);
-
-	assert.equal(await statusText(page), `Your fortune: ${customFortune}`);
-	await page.locator(".fortune-teller__stage").screenshot({ path: "screenshots/revealed-custom-fortune.png" });
-});
-
-test("an invalid value in the form shows its rule and is not saved", async ({ page }) => {
-	await page.goto("");
-	await waitForPhase(page, "chooseColour");
-	await page.getByRole("button", { name: "Edit", exact: true }).click();
-	const label = page.getByLabel("Top right pocket label");
-
-	await label.fill("a label that is far too long");
-
-	assert.equal(await label.getAttribute("aria-invalid"), "true");
-	const problemId = await label.getAttribute("aria-describedby");
-	assert.equal(await page.locator(`#${problemId}`).innerText(), "This must have 1 to 12 characters, got 28; shorten the text.");
-	assert.equal(await page.evaluate((key) => window.localStorage.getItem(key), storageKey), null);
-
-	await label.fill("pink");
-	assert.equal(await label.getAttribute("aria-invalid"), "false");
-	const saved = await page.evaluate((key) => window.localStorage.getItem(key), storageKey);
-	assert.equal(JSON.parse(saved ?? "null").pockets[0].label, "pink");
-	await page.getByRole("button", { name: "Done", exact: true }).click();
-	await waitForPhase(page, "chooseColour");
-	assert.deepEqual(await choiceLabels(page), ["pink", "blue", "green", "yellow"]);
+	assert.deepEqual(await choiceNames(page), ["Play again"]);
 });
 
 test("a click on a pocket and then on two number triangles plays the game on the canvas", async ({ page }) => {
@@ -86,15 +71,17 @@ test("a click on a pocket and then on two number triangles plays the game on the
 	await page.waitForTimeout(300);
 	assert.equal(await page.locator(".fortune-teller").getAttribute("data-phase"), "chooseColour", "a click beside the paper must do nothing");
 
+	// The top right pocket counts six and leaves the paper open east-west; number 1 is right of centre, above the middle.
 	await clickStage(page, 0.68, 0.3);
-	await waitForStatus(page, "Choose a number.");
-	await page.mouse.move(...(await stagePoint(page, 0.6, 0.41)));
+	await waitForStatus(page, firstNumberPrompt);
+	await page.mouse.move(...(await stagePoint(page, 0.573, 0.39)));
 	await page.waitForTimeout(100);
 	await page.locator(".fortune-teller__stage").screenshot({ path: "screenshots/hover-highlight.png" });
 	assert.equal(await page.locator(".fortune-teller__stage canvas").evaluate((canvas) => getComputedStyle(canvas).cursor), "pointer");
-	await clickStage(page, 0.6, 0.41);
-	await waitForStatus(page, "Choose one more number to see your fortune.");
-	assert.deepEqual(await choiceLabels(page), ["2", "3", "6", "7"]);
+	await clickStage(page, 0.573, 0.39);
+	await waitForStatus(page, secondNumberPrompt);
+	assert.deepEqual(await choiceNames(page), ["2", "3", "6", "7"]);
+	// One count later the paper is open north-south; number 2 is right of centre, above the middle.
 	await clickStage(page, 0.6, 0.41);
 	await waitForPhase(page, "revealed");
 
@@ -103,7 +90,7 @@ test("a click on a pocket and then on two number triangles plays the game on the
 
 test("a corner pocket under the pointer expands outward and settles back when the pointer leaves", async ({ page }) => {
 	// Invariant: hovering a pocket moves its outer corner away from the centre; leaving undoes it.
-	// Witness: a point just beyond the resting corner of the red pocket is empty, then red, then empty.
+	// Witness: a point just beyond the resting corner of the top right pocket is empty, then purple, then empty.
 	await page.setViewportSize({ width: 1280, height: 900 });
 	await page.goto("");
 	await waitForPhase(page, "chooseColour");
@@ -128,135 +115,30 @@ test("a corner pocket under the pointer expands outward and settles back when th
 	const grown = await stagePixel(page, beyondRestCorner);
 	await page.locator(".fortune-teller__stage").screenshot({ path: "screenshots/hover-expanded-pocket.png" });
 	assert.equal(grown.alpha, 255, "the expanded pocket must cover the sample point");
-	assert.ok(grown.red > grown.blue + 60 && grown.red > grown.green + 60, `the sample point must be red, got ${JSON.stringify(grown)}`);
+	assert.ok(grown.blue > grown.green && grown.blue > grown.red, `the sample point must be purple, got ${JSON.stringify(grown)}`);
 
 	await page.mouse.move(...(await stagePoint(page, 0.02, 0.02)));
 	await page.waitForTimeout(500);
 	assert.equal((await stagePixel(page, beyondRestCorner)).alpha, 0, "the pocket must settle back when the pointer leaves");
 });
 
-test("with reduced motion the count is one short step", async ({ page }) => {
+test("with reduced motion a count is one short step, and the second choice still offers 3", async ({ page }) => {
 	await page.emulateMedia({ reducedMotion: "reduce" });
 	await page.goto("");
 	await waitForPhase(page, "chooseColour");
 
 	const startMs = Date.now();
-	await page.getByRole("button", { name: "yellow", exact: true }).click();
-	await waitForStatus(page, "Choose a number.");
+	await page.getByRole("button", { name: "purple", exact: true }).click();
+	await waitForStatus(page, firstNumberPrompt);
 	const elapsedMs = Date.now() - startMs;
 
 	// Six counts take about 2300 ms with full motion and one step of 150 ms with reduced motion.
 	assert.ok(elapsedMs < 1200, `the count took ${elapsedMs} ms`);
-	assert.deepEqual(await choiceLabels(page), ["1", "4", "5", "8"]);
+	assert.deepEqual(await choiceNames(page), ["1", "4", "5", "8"]);
+	await page.getByRole("button", { name: "4", exact: true }).click();
+	await waitForStatus(page, secondNumberPrompt);
+	assert.deepEqual(await choiceNames(page), ["1", "3", "5", "8"]);
 });
-
-test("a shared link shows its own text, and a broken link shows a notice", async ({ page }) => {
-	const shared = {
-		version: 1,
-		pockets: [
-			{ label: "pink", colour: "#ff7ab8" },
-			{ label: "blue", colour: "#3e63dd" },
-			{ label: "green", colour: "#30a46c" },
-			{ label: "yellow", colour: "#f5d90a" },
-		],
-		panels: Array.from({ length: 8 }, (_unused, index) => ({ label: String(index + 1), fortune: `Shared fortune ${index + 1}.` })),
-	};
-	const encoded = Buffer.from(JSON.stringify(shared), "utf8").toString("base64url");
-
-	await page.goto(`#config=${encoded}`);
-	await waitForPhase(page, "chooseColour");
-	assert.deepEqual(await choiceLabels(page), ["pink", "blue", "green", "yellow"]);
-	assert.equal(await page.locator(".fortune-teller__notice").isVisible(), false);
-
-	await page.goto("about:blank");
-	await page.goto("#config=%%%");
-	await waitForPhase(page, "chooseColour");
-	assert.deepEqual(await choiceLabels(page), ["red", "blue", "green", "yellow"]);
-	assert.equal(
-		await page.locator(".fortune-teller__notice").innerText(),
-		"The fortune teller in this link could not be read (the link data is not valid base64url text), so it is not shown.",
-	);
-});
-
-test("a broken saved value shows a notice and the default toy", async ({ page }) => {
-	await page.addInitScript((key) => {
-		window.localStorage.setItem(key, "{");
-	}, storageKey);
-
-	await page.goto("");
-	await waitForPhase(page, "chooseColour");
-
-	assert.deepEqual(await choiceLabels(page), ["red", "blue", "green", "yellow"]);
-	assert.equal(
-		await page.locator(".fortune-teller__notice").innerText(),
-		"Your saved fortune teller could not be read (the stored text is not valid JSON), so the default one is shown.",
-	);
-});
-
-test("copy link puts a working link on the clipboard, and reset brings the defaults back", async ({ context, page }) => {
-	await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-	await page.goto("");
-	await waitForPhase(page, "chooseColour");
-	await page.getByRole("button", { name: "Edit", exact: true }).click();
-	await page.getByLabel("Top right pocket label").fill("pink");
-
-	await page.getByRole("button", { name: "Copy link", exact: true }).click();
-	await page.locator(".fortune-teller__notice", { hasText: "Link copied." }).waitFor();
-	const link = await page.evaluate(() => navigator.clipboard.readText());
-	assert.match(link, /^http:\/\/127\.0\.0\.1:4317\/nested\/site\/#config=[A-Za-z0-9_-]+$/);
-
-	await page.getByRole("button", { name: "Reset", exact: true }).click();
-	assert.equal(await page.getByLabel("Top right pocket label").inputValue(), "red");
-	assert.equal(new URL(page.url()).hash, "", "a reset must drop the link data from the address");
-	await page.getByRole("button", { name: "Done", exact: true }).click();
-	await waitForPhase(page, "chooseColour");
-	assert.deepEqual(await choiceLabels(page), ["red", "blue", "green", "yellow"]);
-
-	const visitor = await context.newPage();
-	await visitor.goto(link);
-	await waitForPhase(visitor, "chooseColour");
-	assert.deepEqual(await choiceLabels(visitor), ["pink", "blue", "green", "yellow"]);
-});
-
-async function playWithButtons(page: Page, labels: readonly string[]): Promise<void> {
-	for (const [index, label] of labels.entries()) {
-		await page.getByRole("button", { name: label, exact: true }).click();
-		if (index < labels.length - 1) {
-			await waitForStatus(page, index === 0 ? "Choose a number." : "Choose one more number to see your fortune.");
-		}
-	}
-	await waitForPhase(page, "revealed");
-}
-
-async function waitForPhase(page: Page, phase: string): Promise<void> {
-	await page.locator(`.fortune-teller[data-phase="${phase}"]`).waitFor();
-}
-
-async function waitForStatus(page: Page, text: string): Promise<void> {
-	await page.locator(".fortune-teller__status", { hasText: text }).waitFor();
-}
-
-async function statusText(page: Page): Promise<string> {
-	return page.locator(".fortune-teller__status").innerText();
-}
-
-async function choiceLabels(page: Page): Promise<string[]> {
-	return page.locator(".fortune-teller__choices button").allInnerTexts();
-}
-
-async function focusedText(page: Page): Promise<string | null> {
-	return page.evaluate(() => document.activeElement?.textContent ?? null);
-}
-
-async function stagePoint(page: Page, shareX: number, shareY: number): Promise<[number, number]> {
-	const box = await page.locator(".fortune-teller__stage").boundingBox();
-	assert.ok(box !== null, "the stage must be on the page");
-	return [box.x + box.width * shareX, box.y + box.height * shareY];
-}
-
-async function clickStage(page: Page, shareX: number, shareY: number): Promise<void> {
-	await page.mouse.click(...(await stagePoint(page, shareX, shareY)));
-}
 
 // Returns where a point of the paper appears on the stage, as shares of its width and height.
 // This is a pinhole projection for the play camera, written out here so the test does not

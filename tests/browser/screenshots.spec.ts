@@ -8,6 +8,8 @@ import assert from "node:assert/strict";
 import { test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+import { collectPageErrors, firstNumberPrompt, secondNumberPrompt, waitForPhase, waitForStatus } from "./helpers";
+
 const viewports = [
 	{ name: "390", width: 390, height: 844 },
 	{ name: "1280", width: 1280, height: 900 },
@@ -44,14 +46,16 @@ for (const viewport of viewports) {
 		await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
 		await page.goto("");
-		await page.locator('.fortune-teller[data-phase="chooseColour"]').waitFor();
-		await page.getByRole("button", { name: "red", exact: true }).click();
-		await page.locator('.fortune-teller[data-phase="chooseNumber"]').waitFor();
+		await waitForPhase(page, "chooseColour");
+		await page.screenshot({ path: `screenshots/page-choose-colour-${viewport.name}.png`, fullPage: true });
+		await page.getByRole("button", { name: "purple", exact: true }).click();
+		await waitForStatus(page, firstNumberPrompt);
 		await page.screenshot({ path: `screenshots/page-choose-number-${viewport.name}.png`, fullPage: true });
-		await page.getByRole("button", { name: "3", exact: true }).click();
-		await page.locator('.fortune-teller[data-phase="chooseNumber"]').waitFor();
+		await page.getByRole("button", { name: "4", exact: true }).click();
+		await waitForStatus(page, secondNumberPrompt);
+		await page.screenshot({ path: `screenshots/page-second-choice-${viewport.name}.png`, fullPage: true });
 		await page.getByRole("button", { name: "5", exact: true }).click();
-		await page.locator('.fortune-teller[data-phase="revealed"]').waitFor();
+		await waitForPhase(page, "revealed");
 		await waitForFrames(page);
 
 		await page.locator(".fortune-teller__stage").screenshot({ path: `screenshots/revealed-${viewport.name}.png` });
@@ -70,7 +74,7 @@ test("the paper draws at every stage of a count, and the page asks no other host
 	await page.goto("");
 	await page.locator('.fortune-teller[data-phase="chooseColour"]').waitFor();
 
-	await page.getByRole("button", { name: "yellow", exact: true }).click();
+	await page.getByRole("button", { name: "purple", exact: true }).click();
 	for (let frame = 0; frame < countFrames; frame += 1) {
 		await page.locator(".fortune-teller__stage").screenshot({ path: `screenshots/count-frame-${frame}.png` });
 	}
@@ -90,19 +94,6 @@ test("an invalid pose parameter shows an error and no toy", async ({ page }) => 
 	assert.match(await problem.innerText(), /pose must be two numbers from 0 to 1/);
 	assert.equal(await page.locator("canvas").count(), 0);
 });
-
-function collectPageErrors(page: Page): string[] {
-	const pageErrors: string[] = [];
-	page.on("pageerror", (error) => {
-		pageErrors.push(error.message);
-	});
-	page.on("console", (message) => {
-		if (message.type() === "error") {
-			pageErrors.push(message.text());
-		}
-	});
-	return pageErrors;
-}
 
 // The toy draws on animation frames; three frames cover the resize, the draw and the present.
 async function waitForFrames(page: Page): Promise<void> {

@@ -1,6 +1,9 @@
 // Builds the page elements around the canvas: the stage, the status line, the choice buttons and the notice.
 
-/** One button under the canvas; `swatchColour` adds a colour dot for a pocket. */
+/**
+ * One button under the canvas. A choice with a `swatchColour` shows only that colour; its
+ * label is then the name that a screen reader speaks, and no word is drawn.
+ */
 export type Choice = Readonly<{ label: string; swatchColour?: string; choose: () => void }>;
 
 /** Whether the choice buttons accept input, or wait for an animation to end. */
@@ -79,13 +82,14 @@ function createChoiceButton(choice: Choice, availability: ChoiceAvailability): H
 	const button = document.createElement("button");
 	button.type = "button";
 	button.className = "fortune-teller__button fortune-teller__button--choice";
-	if (choice.swatchColour !== undefined) {
+	if (choice.swatchColour === undefined) {
+		button.append(choice.label);
+	} else {
 		const swatch = element("span", "fortune-teller__swatch");
 		swatch.style.backgroundColor = choice.swatchColour;
-		swatch.setAttribute("aria-hidden", "true");
 		button.append(swatch);
+		button.setAttribute("aria-label", choice.label);
 	}
-	button.append(choice.label);
 	if (availability === "waiting") {
 		button.setAttribute("aria-disabled", "true");
 		return button;

@@ -6,8 +6,8 @@
 import type { TweenOutcome } from "./animation";
 import type { FortuneTellerConfig } from "./config";
 import type { Choice, Controls } from "./controls";
-import { advanceGame, choosablePanelIndexes, initialGameState } from "./game";
-import type { GameEvent, GameState, OpeningAxis } from "./game";
+import { advanceGame, choosableTriangleIndexes, initialGameState, standardLayout } from "./game";
+import type { GameEvent, GameRules, GameState, OpeningAxis, PanelLayout } from "./game";
 import type { PickTarget } from "./paper-meshes";
 import { namedPoses } from "./rig";
 import type { ToyView, ViewGoal } from "./toy-view";
@@ -24,18 +24,31 @@ const reducedMotionDurationMs = 150;
 const closedGoal: ViewGoal = { offsets: namedPoses.closed, liftedPanelIndex: null, framing: { kind: "play" } };
 const bowlGoal: ViewGoal = { offsets: namedPoses.reveal, liftedPanelIndex: null, framing: { kind: "play" } };
 
+/** A panel that the second number choice always offers, with the question asked at that choice. */
+export type SpecialEnding = Readonly<{
+	/** Index of the panel, from 0 to 7. Panel 3 has index 2. */
+	panelIndex: number;
+	/** The status line at the second number choice. */
+	prompt: string;
+	/** Called when the player chooses the panel. Without it, the panel shows its fortune like any other. */
+	onChosen?: () => void;
+}>;
+
 export type GameFlowOptions = Readonly<{
 	view: ToyView;
 	controls: Controls;
 	config: () => FortuneTellerConfig;
 	prefersReducedMotion: () => boolean;
 	cancelMotion: () => void;
+	special: SpecialEnding | null;
+	/** Draws the labels and fortunes of a layout on the paper. */
+	showLayout: (layout: PanelLayout) => void;
 }>;
 
 export type GameFlow = Readonly<{
 	state: () => GameState;
 	choosePocket: (pocketIndex: number) => void;
-	choosePanel: (panelIndex: number) => void;
+	chooseTriangle: (triangleIndex: number) => void;
 	/** True if pointing at the target would be accepted now. */
 	isChoosable: (target: PickTarget) => boolean;
 	/** True while the toy waits for the player, so idle motion is welcome. */
@@ -46,9 +59,12 @@ export type GameFlow = Readonly<{
 	refresh: () => void;
 }>;
 
+type CountingState = Extract<GameState, { phase: "counting" }>;
+type ChoiceState = Exclude<GameState, { phase: "counting" | "handedOver" | "revealing" }>;
+
 /** Creates the flow and shows the first phase. */
 export function createGameFlow(options: GameFlowOptions): GameFlow {
-	const { cancelMotion, config, controls, prefersReducedMotion, view } = options;
+	const { cancelMotion, config, controls, prefersReducedMotion, showLayout, special, view } = options;
 	let state: GameState = initialGameState;
 	let isPaused = false;
 	let isReturning = false;
@@ -56,12 +72,16 @@ export function createGameFlow(options: GameFlowOptions): GameFlow {
 	let shownChoices: readonly Choice[] = [];
 
 	const duration = (fullMs: number): number => (prefersReducedMotion() ? reducedMotionDurationMs : fullMs);
+	const rules = (): GameRules => ({
+		config: config(),
+		special: special === null ? null : { panelIndex: special.panelIndex, ending: special.onChosen === undefined ? "fortune" : "handOver" },
+	});
 
 	const dispatch = (event: GameEvent): void => {
 		if (isPaused || isReturning) {
 			return;
 		}
-		const next = advanceGame(state, event, config());
+		const next = advanceGame(state, event, rules());
 		if (next === state) {
 			return;
 		}
@@ -77,53 +97,58 @@ export function createGameFlow(options: GameFlowOptions): GameFlow {
 				dispatch({ type: "animationFinished" });
 			}
 		} else if (entered.phase === "revealing") {
-			const outcome = await playReveal(entered.panelIndex);
+			const outcome = await playReveal(entered.triangleIndex);
 			if (outcome === "finished") {
 				dispatch({ type: "animationFinished" });
 			}
+		} else if (entered.phase === "handedOver") {
+			special?.onChosen?.();
 		} else if (entered.phase === "chooseColour") {
 			isReturning = true;
 			show();
 			const outcome = await playReturn();
 			isReturning = false;
 			if (outcome === "finished") {
+				showLayout(standardLayout);
 				show();
 			}
 		}
 	};
 
-	const playCounting = async (counting: Extract<GameState, { phase: "counting" }>): Promise<TweenOutcome> => {
+	const playCounting = async (counting: CountingState): Promise<TweenOutcome> => {
 		const spoken: string[] = [];
+		const lastIndex = counting.openings.length - 1;
 		let isOpen = counting.numbersChosen === 1;
 		for (const [index, axis] of counting.openings.entries()) {
 			spoken.push(counting.tokens[index] ?? "");
 			controls.setStatus(spoken.join(" "));
-			if (prefersReducedMotion()) {
+			// With reduced motion the status line carries the count and only the last opening moves.
+			if (prefersReducedMotion() && index < lastIndex) {
 				continue;
 			}
-			if (isOpen && (await view.moveTo(closedGoal, closeDurationMs)) === "cancelled") {
+			if (isOpen && (await view.moveTo(closedGoal, duration(closeDurationMs))) === "cancelled") {
 				return "cancelled";
 			}
-			if ((await view.moveTo(openGoal(axis), openDurationMs)) === "cancelled") {
+			// The paper is closed here, so the player cannot see two panels trade places.
+			if (index === lastIndex) {
+				showLayout(counting.layout);
+			}
+			if ((await view.moveTo(openGoal(axis), duration(openDurationMs))) === "cancelled") {
 				return "cancelled";
 			}
 			isOpen = true;
 		}
-		const lastAxis = counting.openings.at(-1);
-		if (prefersReducedMotion() && lastAxis !== undefined) {
-			return view.moveTo(openGoal(lastAxis), reducedMotionDurationMs);
-		}
 		return "finished";
 	};
 
-	const playReveal = async (panelIndex: number): Promise<TweenOutcome> => {
+	const playReveal = async (triangleIndex: number): Promise<TweenOutcome> => {
 		if ((await view.moveTo(bowlGoal, duration(flattenDurationMs))) === "cancelled") {
 			return "cancelled";
 		}
 		const fortuneGoal: ViewGoal = {
 			offsets: namedPoses.reveal,
-			liftedPanelIndex: panelIndex,
-			framing: { kind: "fortune", panelIndex },
+			liftedPanelIndex: triangleIndex,
+			framing: { kind: "fortune", panelIndex: triangleIndex },
 		};
 		return view.moveTo(fortuneGoal, duration(liftDurationMs));
 	};
@@ -143,18 +168,18 @@ export function createGameFlow(options: GameFlowOptions): GameFlow {
 			return;
 		}
 		const shown = state;
-		const isAnimating = shown.phase === "counting" || shown.phase === "revealing";
-		if (shown.phase !== "counting" && shown.phase !== "revealing") {
+		const hasChoices = shown.phase !== "counting" && shown.phase !== "revealing" && shown.phase !== "handedOver";
+		if (shown.phase !== "counting" && shown.phase !== "revealing" && shown.phase !== "handedOver") {
 			shownChoices = choicesFor(shown);
 		}
-		controls.setChoices(shownChoices, isAnimating || isReturning ? "waiting" : "enabled");
-		const status = statusFor(state);
+		controls.setChoices(shownChoices, hasChoices && !isReturning ? "enabled" : "waiting");
+		const status = statusFor(shown);
 		if (status !== undefined) {
 			controls.setStatus(status);
 		}
 	};
 
-	const choicesFor = (shown: Exclude<GameState, { phase: "counting" | "revealing" }>): readonly Choice[] => {
+	const choicesFor = (shown: ChoiceState): readonly Choice[] => {
 		const { panels, pockets } = config();
 		switch (shown.phase) {
 			case "chooseColour":
@@ -166,10 +191,10 @@ export function createGameFlow(options: GameFlowOptions): GameFlow {
 					},
 				}));
 			case "chooseNumber":
-				return choosablePanelIndexes(shown.openAxis).map((panelIndex) => ({
-					label: panels[panelIndex]?.label ?? "",
+				return choosableTriangleIndexes(shown.openAxis).map((triangleIndex) => ({
+					label: panels[shown.layout[triangleIndex] ?? -1]?.label ?? "",
 					choose: () => {
-						dispatch({ type: "panelChosen", panelIndex });
+						dispatch({ type: "panelChosen", triangleIndex });
 					},
 				}));
 			case "revealed":
@@ -188,13 +213,18 @@ export function createGameFlow(options: GameFlowOptions): GameFlow {
 		}
 	};
 
+	// Returns undefined for a phase that keeps the status line of the phase before it.
 	const statusFor = (shown: GameState): string | undefined => {
 		switch (shown.phase) {
 			case "chooseColour":
 				return "Choose a colour.";
 			case "chooseNumber":
-				return shown.numbersChosen === 0 ? "Choose a number." : "Choose one more number to see your fortune.";
+				if (shown.numbersChosen === 0) {
+					return "Choose a number.";
+				}
+				return special === null ? "Choose one more number to see your fortune." : special.prompt;
 			case "counting":
+			case "handedOver":
 				return undefined;
 			case "revealed":
 			case "revealing":
@@ -212,8 +242,8 @@ export function createGameFlow(options: GameFlowOptions): GameFlow {
 		choosePocket: (pocketIndex) => {
 			dispatch({ type: "pocketChosen", pocketIndex });
 		},
-		choosePanel: (panelIndex) => {
-			dispatch({ type: "panelChosen", panelIndex });
+		chooseTriangle: (triangleIndex) => {
+			dispatch({ type: "panelChosen", triangleIndex });
 		},
 		isChoosable: (target) => {
 			if (isPaused || isReturning) {
@@ -222,7 +252,7 @@ export function createGameFlow(options: GameFlowOptions): GameFlow {
 			if (target.kind === "pocket") {
 				return state.phase === "chooseColour";
 			}
-			return state.phase === "chooseNumber" && choosablePanelIndexes(state.openAxis).includes(target.index);
+			return state.phase === "chooseNumber" && choosableTriangleIndexes(state.openAxis).includes(target.index);
 		},
 		isWaitingForPlayer: () => !isPaused && !isReturning && (state.phase === "chooseColour" || state.phase === "chooseNumber"),
 		setPaused: (shouldPause) => {
@@ -230,6 +260,7 @@ export function createGameFlow(options: GameFlowOptions): GameFlow {
 			isPaused = shouldPause;
 			isReturning = false;
 			state = initialGameState;
+			showLayout(standardLayout);
 			show();
 			void view.moveTo(closedGoal, duration(returnDurationMs));
 		},
