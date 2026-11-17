@@ -1,0 +1,25 @@
+{
+	"name": "paper-fortune-teller",
+	"version": "1.0.0",
+	"description": "An interactive 3D paper fortune teller for the web.",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"typecheck": "tsc --noEmit",
+		"build": "tsc --noEmit && vite build",
+		"test": "vitest run",
+		"test:browser": "playwright test"
+	},
+	"dependencies": {
+		"three": "0.187.0"
+	},
+	"devDependencies": {
+		"@playwright/test": "1.65.1",
+		"@types/node": "26.6.6",
+		"@types/three": "0.187.0",
+		"typescript": "7.0.2",
+		"vite": "8.3.8",
+		"vitest": "5.1.0"
+	}
+}

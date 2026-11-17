@@ -1,0 +1,32 @@
+/* Styles for the demo page only. The component's own styles are in style.css. */
+
+.demo {
+	margin: 0;
+	background: #f3efe6;
+	color: #2b2620;
+	font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+.demo__main {
+	max-width: 44rem;
+	margin: 0 auto;
+	padding: 1.5rem 1rem 3rem;
+}
+
+.demo__title {
+	margin: 0 0 0.25rem;
+	font-size: 1.6rem;
+	text-align: center;
+}
+
+.demo__lead {
+	margin: 0 0 1rem;
+	text-align: center;
+}
+
+.demo__problem {
+	padding: 1rem;
+	border: 2px solid #b3261e;
+	border-radius: 0.5rem;
+	background: #fff;
+}
