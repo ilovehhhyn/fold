@@ -88,6 +88,8 @@ function mixPoint(start: Point, end: Point, progress: number): Point {
 	return [mix(start[0], end[0], progress), mix(start[1], end[1], progress), mix(start[2], end[2], progress)];
 }
 
+// This form returns exactly `start` at progress 0 and exactly `end` at progress 1, so a finished
+// move rests on its goal values and not one rounding step beside them.
 function mix(start: number, end: number, progress: number): number {
-	return start + (end - start) * progress;
+	return start * (1 - progress) + end * progress;
 }
